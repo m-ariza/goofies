@@ -14,17 +14,34 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref } from "vue";
+import { storage } from "@/utils/firebase";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const imageUrl = ref<string | null>(null);
+const uploading = ref(false);
 
-const handleImageUpload = (event: Event) => {
+const handleImageUpload = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
-  if (file) {
-    imageUrl.value = URL.createObjectURL(file);
+  if (!file) return;
+
+  uploading.value = true;
+
+  // Create storage reference
+  const fileRef = storageRef(storage, `uploads/${file.name}`);
+
+  try {
+    // Upload file
+    await uploadBytes(fileRef, file);
+    imageUrl.value = await getDownloadURL(fileRef);
+  } catch (error) {
+    console.error("Upload failed", error);
+  } finally {
+    uploading.value = false;
   }
 };
 </script>
+
 
 <style scoped>
 /* Ensure container adjusts properly */
