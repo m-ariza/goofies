@@ -6,8 +6,14 @@
         <input type="file" accept="image/*" @change="handleImageUpload" class="hidden" />
       </label>
 
-      <div v-if="imageUrl" class="mt-4 flex justify-center">
-        <img :src="imageUrl" alt="Uploaded Image" class="max-w-full max-h-[80vh] object-contain rounded-lg shadow-lg" />
+      <!-- Display loading message while uploading -->
+      <div v-if="uploading" class="mt-4 text-white">Uploading...</div>
+
+      <!-- Gallery Section -->
+      <div v-if="imageUrls.length > 0" class="mt-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+        <div v-for="(image, index) in imageUrls" :key="index" class="flex justify-center">
+          <img :src="image" alt="Uploaded Image" class="max-w-full max-h-[200px] object-cover rounded-lg shadow-lg" />
+        </div>
       </div>
     </div>
   </div>
@@ -18,7 +24,8 @@ import { ref } from "vue";
 import { storage } from "@/utils/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
-const imageUrl = ref<string | null>(null);
+// Array to store multiple image URLs
+const imageUrls = ref<string[]>([]);
 const uploading = ref(false);
 
 const handleImageUpload = async (event: Event) => {
@@ -33,7 +40,10 @@ const handleImageUpload = async (event: Event) => {
   try {
     // Upload file
     await uploadBytes(fileRef, file);
-    imageUrl.value = await getDownloadURL(fileRef);
+    const url = await getDownloadURL(fileRef);
+
+    // Add the uploaded image URL to the gallery
+    imageUrls.value.push(url);
   } catch (error) {
     console.error("Upload failed", error);
   } finally {
@@ -42,10 +52,16 @@ const handleImageUpload = async (event: Event) => {
 };
 </script>
 
-
 <style scoped>
-/* Ensure container adjusts properly */
+/* Image transitions */
 img {
   transition: all 0.3s ease-in-out;
+}
+
+/* Gallery styling for responsiveness */
+@media (min-width: 640px) {
+  .gallery {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 </style>
