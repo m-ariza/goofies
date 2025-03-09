@@ -1,45 +1,46 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-900 p-6">
-    <div class="relative bg-gray-800 p-6 rounded-lg shadow-2xl w-full max-w-5xl text-center">
-      <label class="cursor-pointer bg-blue-600 text-white px-4 py-2 rounded-lg shadow hover:bg-blue-700 transition">
+  <UContainer class="min-h-screen flex items-center justify-center bg-gray-900 text-white p-6">
+    <UCard class="relative w-full max-w-5xl text-center bg-gray-800 shadow-xl p-6">
+
+      <UButton @click="openFilePicker" size="large" type="primary">
         Upload Image
-        <input type="file" accept="image/*" @change="handleImageUpload" class="hidden" />
-      </label>
+      </UButton>
+      <input ref="fileInput" type="file" accept="image/*" @change="handleImageUpload" class="hidden" />
 
-      <!-- Display loading message while uploading -->
-      <div v-if="uploading" class="mt-4 text-white">Uploading...</div>
+      <!-- Uploading Indicator -->
+      <UAlert v-if="uploading" type="info" class="mt-4">
+        Uploading...
+      </UAlert>
 
-      <!-- Display error message if file is too large -->
-      <div v-if="error" class="mt-4 text-red-500">{{ error }}</div>
+      <!-- Error Message -->
+      <UAlert v-if="error" type="error" class="mt-4">
+        {{ error }}
+      </UAlert>
 
-      <!-- Gallery Section -->
+      <!-- Image Gallery -->
       <div v-if="imageUrls.length > 0" class="mt-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-        <div v-for="(image, index) in imageUrls" :key="index" class="flex justify-center relative">
-          <img :src="image.url" alt="Uploaded Image"
-            class="max-w-full max-h-[200px] object-cover rounded-lg shadow-lg cursor-pointer"
+        <UCard v-for="(image, index) in imageUrls" :key="index" class="relative flex justify-center items-center p-2 bg-gray-700 rounded-lg shadow-md">
+          <img :src="image.url" alt="Uploaded Image" class="max-w-full max-h-[200px] object-cover rounded-lg cursor-pointer"
             @click="openModal(image.url)" />
-
-          <!-- Delete Button -->
-          <button @click="deleteImage(image.url, index)"
-            class="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded-full shadow hover:bg-red-700 transition">
-            X
-          </button>
-        </div>
+          <UButton quaternary class="absolute top-2 right-2" @click="deleteImage(image.url, index)">
+            <UIcon name="ic:outline-delete" />
+          </UButton>
+        </UCard>
       </div>
-    </div>
 
-    <!-- Modal for Enlarged Image -->
-    <div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-      @click="closeModal">
-      <div class="relative">
-        <img v-if="selectedImageUrl" :src="selectedImageUrl" alt="Enlarged Image"
-          class="max-w-3xl max-h-[80vh] object-contain rounded-lg shadow-lg" />
-        <button @click="closeModal" class="absolute top-2 right-2 bg-white text-black px-4 py-2 rounded-full shadow-lg">
+    </UCard>
+
+    <!-- Simple Modal for Enlarged Image -->
+    <div v-if="showModal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+      <div class="bg-gray-800 p-6 rounded-lg max-w-3xl max-h-[80vh]">
+        <img v-if="selectedImageUrl" :src="selectedImageUrl" alt="Enlarged Image" class="max-w-full max-h-full object-contain mx-auto" />
+        <UButton block type="error" @click="closeModal" class="mt-4">
           Close
-        </button>
+        </UButton>
       </div>
     </div>
-  </div>
+
+  </UContainer>
 </template>
 
 <script setup lang="ts">
@@ -48,150 +49,99 @@ import { storage } from "@/utils/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL, listAll, deleteObject } from "firebase/storage";
 import Compressor from "compressorjs";
 
-// Array to store multiple image URLs with Firebase reference
+// Image data
 const imageUrls = ref<{ url: string, ref: any }[]>([]);
 const uploading = ref(false);
 const error = ref<string | null>(null);
+const fileInput = ref<HTMLInputElement | null>(null);
 
 // Modal state
 const showModal = ref(false);
 const selectedImageUrl = ref<string | null>(null);
 
-// Maximum file size limit (in bytes)
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+// Maximum file size
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-// Fetch all images from Firebase Storage on component mount
+// Fetch images on mount
 const fetchImages = async () => {
-  const imagesRef = storageRef(storage, "uploads"); // Path where images are stored in Firebase
+  const imagesRef = storageRef(storage, "uploads");
   try {
-    const result = await listAll(imagesRef); // Get all files in the 'uploads' folder
-
+    const result = await listAll(imagesRef);
     for (const item of result.items) {
       const url = await getDownloadURL(item);
-      imageUrls.value.push({ url, ref: item }); // Add URL and reference to the gallery
+      imageUrls.value.push({ url, ref: item });
     }
-  } catch (error) {
-    console.error("Error fetching images", error);
+  } catch (err) {
+    console.error("Error fetching images", err);
   }
 };
-
-// Call fetchImages when the component is mounted
 onMounted(fetchImages);
 
+// Open file picker
+const openFilePicker = () => {
+  fileInput.value?.click();
+};
+
+// Handle image upload
 const handleImageUpload = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
 
-  // Check if file size exceeds the limit
   if (file.size > MAX_FILE_SIZE) {
-    error.value = "File size exceeds the 5 MB limit. Please upload a smaller image.";
-    return; // Prevent upload if file is too large
+    error.value = "File size exceeds the 5MB limit.";
+    return;
   }
 
-  error.value = null; // Clear any previous error
   uploading.value = true;
+  error.value = null;
 
-  // Compress the image before uploading
   new Compressor(file, {
-  quality: 0.8, // Adjust quality (0.0 to 1.0)
-  //maxWidth: 800, Set max width (optional)
-  //maxHeight: 800, Set max height (optional)
-  success: async (compressedFile) => {
-    // Ensure that compressedFile is either a Blob or a File
-    let fileName: string;
+    quality: 0.8,
+    success: async (compressedFile) => {
+      const fileName = `compressed_${Date.now()}.jpg`;
+      const fileRef = storageRef(storage, `uploads/${fileName}`);
 
-    // Type assertion to let TypeScript know compressedFile is a File or Blob
-    if ((compressedFile as Blob).size) {
-      // If it's a Blob (which doesn't have a name), create a name based on timestamp
-      fileName = `compressed_${Date.now()}.jpg`;
-    } else {
-      // If it's a File, use the name property
-      fileName = (compressedFile as File).name;
-    }
-
-    // Create storage reference with the appropriate file name
-    const fileRef = storageRef(storage, `uploads/${fileName}`);
-
-    try {
-      // Upload compressed file
-      await uploadBytes(fileRef, compressedFile);
-      const url = await getDownloadURL(fileRef);
-
-      // Add the uploaded image URL and reference to the gallery
-      imageUrls.value.push({ url, ref: fileRef });
-    } catch (error) {
-      console.error("Upload failed", error);
-    } finally {
+      try {
+        await uploadBytes(fileRef, compressedFile);
+        const url = await getDownloadURL(fileRef);
+        imageUrls.value.push({ url, ref: fileRef });
+      } catch (err) {
+        console.error("Upload failed", err);
+      } finally {
+        uploading.value = false;
+      }
+    },
+    error: (err) => {
+      console.error("Compression failed", err);
       uploading.value = false;
-    }
-  },
-  error: (err) => {
-    console.error("Compression failed", err);
-    uploading.value = false;
-  },
-});
-
-
+    },
+  });
 };
 
-// Function to delete image from Firebase Storage and the gallery
+// Delete image
 const deleteImage = async (url: string, index: number) => {
-  const fileRef = imageUrls.value[index].ref; // Get the Firebase Storage reference for the image
+  const fileRef = imageUrls.value[index].ref;
 
   try {
-    // Delete the file from Firebase Storage
     await deleteObject(fileRef);
-
-    // Remove the image from the gallery
     imageUrls.value.splice(index, 1);
-  } catch (error) {
-    console.error("Delete failed", error);
+  } catch (err) {
+    console.error("Delete failed", err);
   }
 };
 
-// Function to open the modal with the enlarged image
+// Modal functions
 const openModal = (imageUrl: string) => {
   selectedImageUrl.value = imageUrl;
-  showModal.value = true;
+  showModal.value = true; // This opens the modal
 };
 
-// Function to close the modal
 const closeModal = () => {
-  showModal.value = false;
+  showModal.value = false; // This closes the modal
   selectedImageUrl.value = null;
 };
 </script>
 
 <style scoped>
-/* Image transitions */
-img {
-  transition: all 0.3s ease-in-out;
-}
-
-/* Modal styling */
-.fixed {
-  position: fixed;
-}
-
-.bg-black {
-  background-color: rgba(0, 0, 0, 0.5);
-}
-
-.object-contain {
-  object-fit: contain;
-}
-
-.object-cover {
-  object-fit: cover;
-}
-
-button {
-  cursor: pointer;
-}
-
-@media (min-width: 640px) {
-  .gallery {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
+/* Add any custom styles if needed */
 </style>
