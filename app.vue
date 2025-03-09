@@ -15,40 +15,30 @@
       <!-- Gallery Section -->
       <div v-if="imageUrls.length > 0" class="mt-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
         <div v-for="(image, index) in imageUrls" :key="index" class="flex justify-center relative">
-          <img
-            :src="image.url"
-            alt="Uploaded Image"
+          <img :src="image.url" alt="Uploaded Image"
             class="max-w-full max-h-[200px] object-cover rounded-lg shadow-lg cursor-pointer"
-            @click="openModal(image.url)"
-          />
-          
+            @click="openModal(image.url)" />
+
           <!-- Delete Button -->
-          <button
-            @click="deleteImage(image.url, index)"
-            class="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded-full shadow hover:bg-red-700 transition"
-          >
+          <button @click="deleteImage(image.url, index)"
+            class="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded-full shadow hover:bg-red-700 transition">
             X
           </button>
         </div>
       </div>
     </div>
 
-<!-- Modal for Enlarged Image -->
-<div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click="closeModal">
-  <div class="relative">
-    <!-- Ensure that the selectedImageUrl is a string before rendering the image -->
-    <img
-      v-if="selectedImageUrl"
-      :src="selectedImageUrl"
-      alt="Enlarged Image"
-      class="max-w-3xl max-h-[80vh] object-contain rounded-lg shadow-lg"
-    />
-    <!-- Close Button -->
-    <button @click="closeModal" class="absolute top-2 right-2 bg-white text-black px-4 py-2 rounded-full shadow-lg">
-      Close
-    </button>
-  </div>
-</div>
+    <!-- Modal for Enlarged Image -->
+    <div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      @click="closeModal">
+      <div class="relative">
+        <img v-if="selectedImageUrl" :src="selectedImageUrl" alt="Enlarged Image"
+          class="max-w-3xl max-h-[80vh] object-contain rounded-lg shadow-lg" />
+        <button @click="closeModal" class="absolute top-2 right-2 bg-white text-black px-4 py-2 rounded-full shadow-lg">
+          Close
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -56,6 +46,7 @@
 import { ref, onMounted } from "vue";
 import { storage } from "@/utils/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL, listAll, deleteObject } from "firebase/storage";
+import Compressor from "compressorjs";
 
 // Array to store multiple image URLs with Firebase reference
 const imageUrls = ref<{ url: string, ref: any }[]>([]);
@@ -75,7 +66,6 @@ const fetchImages = async () => {
   try {
     const result = await listAll(imagesRef); // Get all files in the 'uploads' folder
 
-    // For each file, get the download URL and store it in the imageUrls array
     for (const item of result.items) {
       const url = await getDownloadURL(item);
       imageUrls.value.push({ url, ref: item }); // Add URL and reference to the gallery
@@ -101,21 +91,47 @@ const handleImageUpload = async (event: Event) => {
   error.value = null; // Clear any previous error
   uploading.value = true;
 
-  // Create storage reference
-  const fileRef = storageRef(storage, `uploads/${file.name}`);
+  // Compress the image before uploading
+  new Compressor(file, {
+  quality: 0.8, // Adjust quality (0.0 to 1.0)
+  //maxWidth: 800, Set max width (optional)
+  //maxHeight: 800, Set max height (optional)
+  success: async (compressedFile) => {
+    // Ensure that compressedFile is either a Blob or a File
+    let fileName: string;
 
-  try {
-    // Upload file
-    await uploadBytes(fileRef, file);
-    const url = await getDownloadURL(fileRef);
+    // Type assertion to let TypeScript know compressedFile is a File or Blob
+    if ((compressedFile as Blob).size) {
+      // If it's a Blob (which doesn't have a name), create a name based on timestamp
+      fileName = `compressed_${Date.now()}.jpg`;
+    } else {
+      // If it's a File, use the name property
+      fileName = (compressedFile as File).name;
+    }
 
-    // Add the uploaded image URL and reference to the gallery
-    imageUrls.value.push({ url, ref: fileRef });
-  } catch (error) {
-    console.error("Upload failed", error);
-  } finally {
+    // Create storage reference with the appropriate file name
+    const fileRef = storageRef(storage, `uploads/${fileName}`);
+
+    try {
+      // Upload compressed file
+      await uploadBytes(fileRef, compressedFile);
+      const url = await getDownloadURL(fileRef);
+
+      // Add the uploaded image URL and reference to the gallery
+      imageUrls.value.push({ url, ref: fileRef });
+    } catch (error) {
+      console.error("Upload failed", error);
+    } finally {
+      uploading.value = false;
+    }
+  },
+  error: (err) => {
+    console.error("Compression failed", err);
     uploading.value = false;
-  }
+  },
+});
+
+
 };
 
 // Function to delete image from Firebase Storage and the gallery
