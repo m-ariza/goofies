@@ -15,7 +15,12 @@
       <!-- Gallery Section -->
       <div v-if="imageUrls.length > 0" class="mt-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
         <div v-for="(image, index) in imageUrls" :key="index" class="flex justify-center relative">
-          <img :src="image.url" alt="Uploaded Image" class="max-w-full max-h-[200px] object-cover rounded-lg shadow-lg" />
+          <img
+            :src="image.url"
+            alt="Uploaded Image"
+            class="max-w-full max-h-[200px] object-cover rounded-lg shadow-lg cursor-pointer"
+            @click="openModal(image.url)"
+          />
           
           <!-- Delete Button -->
           <button
@@ -27,8 +32,26 @@
         </div>
       </div>
     </div>
+
+<!-- Modal for Enlarged Image -->
+<div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click="closeModal">
+  <div class="relative">
+    <!-- Ensure that the selectedImageUrl is a string before rendering the image -->
+    <img
+      v-if="selectedImageUrl"
+      :src="selectedImageUrl"
+      alt="Enlarged Image"
+      class="max-w-3xl max-h-[80vh] object-contain rounded-lg shadow-lg"
+    />
+    <!-- Close Button -->
+    <button @click="closeModal" class="absolute top-2 right-2 bg-white text-black px-4 py-2 rounded-full shadow-lg">
+      Close
+    </button>
+  </div>
+</div>
   </div>
 </template>
+
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { storage } from "@/utils/firebase";
@@ -38,6 +61,10 @@ import { ref as storageRef, uploadBytes, getDownloadURL, listAll, deleteObject }
 const imageUrls = ref<{ url: string, ref: any }[]>([]);
 const uploading = ref(false);
 const error = ref<string | null>(null);
+
+// Modal state
+const showModal = ref(false);
+const selectedImageUrl = ref<string | null>(null);
 
 // Maximum file size limit (in bytes)
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -93,7 +120,7 @@ const handleImageUpload = async (event: Event) => {
 
 // Function to delete image from Firebase Storage and the gallery
 const deleteImage = async (url: string, index: number) => {
-  const fileRef = imageUrls.value[index].ref;
+  const fileRef = imageUrls.value[index].ref; // Get the Firebase Storage reference for the image
 
   try {
     // Delete the file from Firebase Storage
@@ -105,4 +132,50 @@ const deleteImage = async (url: string, index: number) => {
     console.error("Delete failed", error);
   }
 };
+
+// Function to open the modal with the enlarged image
+const openModal = (imageUrl: string) => {
+  selectedImageUrl.value = imageUrl;
+  showModal.value = true;
+};
+
+// Function to close the modal
+const closeModal = () => {
+  showModal.value = false;
+  selectedImageUrl.value = null;
+};
 </script>
+
+<style scoped>
+/* Image transitions */
+img {
+  transition: all 0.3s ease-in-out;
+}
+
+/* Modal styling */
+.fixed {
+  position: fixed;
+}
+
+.bg-black {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.object-contain {
+  object-fit: contain;
+}
+
+.object-cover {
+  object-fit: cover;
+}
+
+button {
+  cursor: pointer;
+}
+
+@media (min-width: 640px) {
+  .gallery {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+</style>
