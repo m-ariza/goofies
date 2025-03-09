@@ -9,29 +9,69 @@
       <!-- Display loading message while uploading -->
       <div v-if="uploading" class="mt-4 text-white">Uploading...</div>
 
+      <!-- Display error message if file is too large -->
+      <div v-if="error" class="mt-4 text-red-500">{{ error }}</div>
+
       <!-- Gallery Section -->
       <div v-if="imageUrls.length > 0" class="mt-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-        <div v-for="(image, index) in imageUrls" :key="index" class="flex justify-center">
-          <img :src="image" alt="Uploaded Image" class="max-w-full max-h-[200px] object-cover rounded-lg shadow-lg" />
+        <div v-for="(image, index) in imageUrls" :key="index" class="flex justify-center relative">
+          <img :src="image.url" alt="Uploaded Image" class="max-w-full max-h-[200px] object-cover rounded-lg shadow-lg" />
+          
+          <!-- Delete Button -->
+          <button
+            @click="deleteImage(image.url, index)"
+            class="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded-full shadow hover:bg-red-700 transition"
+          >
+            X
+          </button>
         </div>
       </div>
     </div>
   </div>
 </template>
-
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { storage } from "@/utils/firebase";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref as storageRef, uploadBytes, getDownloadURL, listAll, deleteObject } from "firebase/storage";
 
-// Array to store multiple image URLs
-const imageUrls = ref<string[]>([]);
+// Array to store multiple image URLs with Firebase reference
+const imageUrls = ref<{ url: string, ref: any }[]>([]);
 const uploading = ref(false);
+const error = ref<string | null>(null);
+
+// Maximum file size limit (in bytes)
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+
+// Fetch all images from Firebase Storage on component mount
+const fetchImages = async () => {
+  const imagesRef = storageRef(storage, "uploads"); // Path where images are stored in Firebase
+  try {
+    const result = await listAll(imagesRef); // Get all files in the 'uploads' folder
+
+    // For each file, get the download URL and store it in the imageUrls array
+    for (const item of result.items) {
+      const url = await getDownloadURL(item);
+      imageUrls.value.push({ url, ref: item }); // Add URL and reference to the gallery
+    }
+  } catch (error) {
+    console.error("Error fetching images", error);
+  }
+};
+
+// Call fetchImages when the component is mounted
+onMounted(fetchImages);
 
 const handleImageUpload = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
 
+  // Check if file size exceeds the limit
+  if (file.size > MAX_FILE_SIZE) {
+    error.value = "File size exceeds the 5 MB limit. Please upload a smaller image.";
+    return; // Prevent upload if file is too large
+  }
+
+  error.value = null; // Clear any previous error
   uploading.value = true;
 
   // Create storage reference
@@ -42,26 +82,27 @@ const handleImageUpload = async (event: Event) => {
     await uploadBytes(fileRef, file);
     const url = await getDownloadURL(fileRef);
 
-    // Add the uploaded image URL to the gallery
-    imageUrls.value.push(url);
+    // Add the uploaded image URL and reference to the gallery
+    imageUrls.value.push({ url, ref: fileRef });
   } catch (error) {
     console.error("Upload failed", error);
   } finally {
     uploading.value = false;
   }
 };
-</script>
 
-<style scoped>
-/* Image transitions */
-img {
-  transition: all 0.3s ease-in-out;
-}
+// Function to delete image from Firebase Storage and the gallery
+const deleteImage = async (url: string, index: number) => {
+  const fileRef = imageUrls.value[index].ref;
 
-/* Gallery styling for responsiveness */
-@media (min-width: 640px) {
-  .gallery {
-    grid-template-columns: repeat(3, 1fr);
+  try {
+    // Delete the file from Firebase Storage
+    await deleteObject(fileRef);
+
+    // Remove the image from the gallery
+    imageUrls.value.splice(index, 1);
+  } catch (error) {
+    console.error("Delete failed", error);
   }
-}
-</style>
+};
+</script>
